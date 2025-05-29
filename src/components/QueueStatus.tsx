@@ -1,75 +1,114 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from 'react';
 import {
   Box,
-  Table,
-  Heading,
-  Spinner,
-  Center,
   Button,
   Link,
-} from "@chakra-ui/react";
+  Table,
+  Text,
+  Spinner,
+} from '@chakra-ui/react';
 
-type Job = {
+interface Job {
   prompt: string;
   filename: string;
+  duration: number;
   status: string;
-  started_at?: string;
-  finished_at?: string;
-};
+  started_at: string;
+  finished_at: string;
+}
 
-export default function QueueStatus() {
-  const [jobs, setJobs] = useState<Job[] | null>(null);
+interface QueueStatusResponse {
+  count: number;
+  jobs: Job[];
+}
+
+const QueueStatus: React.FC = () => {
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchQueueStatus = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('http://localhost:8000/queue-status');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data: QueueStatusResponse = await response.json();
+      setJobs(data.jobs);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch queue status');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    fetch("http://localhost:8000/queue-status")
-      .then((res) => res.json())
-      .then((data) => setJobs(data))
-      .catch((err) => console.error(err));
+    fetchQueueStatus();
+    const interval = setInterval(fetchQueueStatus, 5000); // refresh every 5 seconds
+    return () => clearInterval(interval);
   }, []);
 
   return (
-    <Box p={8}>
-      <Heading mb={6}>🎵 Job Queue</Heading>
+    <Box p={5}>
+      <Text fontSize="2xl" mb={4}>
+        Music Generation Queue Status
+      </Text>
 
-      {!jobs ? (
-        <Center>
-          <Spinner size="xl" />
-        </Center>
-      ) : (
-        <Table.Root colorScheme="teal">
+      {loading && (
+        <Box mb={4}>
+          <Spinner size="lg" />
+          <Text>Loading...</Text>
+        </Box>
+      )}
+
+      {error && (
+        <Box mb={4} color="red.500">
+          Error: {error}
+        </Box>
+      )}
+
+      {!loading && !error && jobs.length === 0 && (
+        <Text>No jobs in queue.</Text>
+      )}
+
+      {!loading && !error && jobs.length > 0 && (
+        <Table.Root size="sm" colorScheme="gray">
           <Table.Header>
             <Table.Row>
               <Table.ColumnHeader>Prompt</Table.ColumnHeader>
               <Table.ColumnHeader>Filename</Table.ColumnHeader>
+              <Table.ColumnHeader>Duration (s)</Table.ColumnHeader>
               <Table.ColumnHeader>Status</Table.ColumnHeader>
-              <Table.ColumnHeader>Started</Table.ColumnHeader>
-              <Table.ColumnHeader>Completed</Table.ColumnHeader>
+              <Table.ColumnHeader>Started At</Table.ColumnHeader>
+              <Table.ColumnHeader>Finished At</Table.ColumnHeader>
               <Table.ColumnHeader>Download</Table.ColumnHeader>
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {jobs.map((job, i) => (
-              <Table.Row key={i}>
+            {jobs.map((job, index) => (
+              <Table.Row key={index}>
                 <Table.Cell>{job.prompt}</Table.Cell>
-                <Table.Cell>{job.filename}.wav</Table.Cell>
+                <Table.Cell>{job.filename}</Table.Cell>
+                <Table.Cell>{job.duration}</Table.Cell>
                 <Table.Cell>{job.status}</Table.Cell>
+                <Table.Cell>{new Date(job.started_at).toLocaleString()}</Table.Cell>
                 <Table.Cell>
-                  {job.started_at ? new Date(job.started_at).toLocaleString() : "-"}
+                  {job.finished_at && job.finished_at !== '0001-01-01T00:00:00Z'
+                    ? new Date(job.finished_at).toLocaleString()
+                    : '-'}
                 </Table.Cell>
                 <Table.Cell>
-                  {job.finished_at ? new Date(job.finished_at).toLocaleString() : "-"}
-                </Table.Cell>
-                <Table.Cell>
-                  {job.status === "completed" ? (
+                  {job.status === 'completed' && (
                     <Link
                       href={`http://localhost:8000/files/${job.filename}.wav`}
+                      download
                     >
-                      <Button size="sm" colorScheme="blue">
-                        Download
+                      <Button colorScheme="blue" size="sm">
+                        Download WAV
                       </Button>
                     </Link>
-                  ) : (
-                    "-"
                   )}
                 </Table.Cell>
               </Table.Row>
@@ -79,4 +118,6 @@ export default function QueueStatus() {
       )}
     </Box>
   );
-}
+};
+
+export default QueueStatus;
